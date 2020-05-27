@@ -38,26 +38,28 @@ logger = logging.getLogger("NinjaDroid")
 
 def main():
     args = get_args()
-    apk = read_target_file(args.target, args.no_string_processing)
+    if args.verbose:
+        logger.setLevel(logging.DEBUG)
 
+    apk = read_target_file(args.target, args.no_string_processing)
     if apk is None:
         sys.exit(1)
 
     filename = get_apk_filename_without_extension(args.target)
-    if args.extract_to_directory is None:
+    if args.target_output_directory is None:
         print_apk_info(apk)
     else:
-        extract_apk_info_to_directory(apk, args.target, filename, args.extract_to_directory)
+        extract_apk_info_to_directory(apk, args.target, filename, args.target_output_directory)
 
 
 def get_args() -> Namespace:
     parser = ArgumentParser(
         description="examples: \n"
-                    "  >> %(prog)s /path/to/input.apk\n"
-                    "  >> %(prog)s /path/to/input.apk --no-string-processing\n"
-                    "  >> %(prog)s /path/to/input.apk --extract\n"
-                    "  >> %(prog)s /path/to/input.apk --extract /path/to/output/\n"
-                    "  >> %(prog)s /path/to/input.apk --extract /path/to/output/ --no-string-processing\n"
+                    "  >> %(prog)s /path/to/file.apk\n"
+                    "  >> %(prog)s /path/to/file.apk --no-string-processing\n"
+                    "  >> %(prog)s /path/to/file.apk --extract\n"
+                    "  >> %(prog)s /path/to/file.apk --extract /path/to/output/directory/\n"
+                    "  >> %(prog)s /path/to/file.apk --extract /path/to/output/directory/ --no-string-processing\n"
                     "  >> %(prog)s --version\n"
                     "  >> %(prog)s --help",
         formatter_class=RawTextHelpFormatter
@@ -75,31 +77,38 @@ def get_args() -> Namespace:
         nargs="?",
         const="./",
         action="store",
-        dest="extract_to_directory",
-        help="Extract and store all the APK entries and info in a given folder (default: ./APK)."
+        dest="target_output_directory",
+        help="Extract and store all the APK entries and info into a given folder (default: './')."
     )
     parser.add_argument(
         "-ns",
         "--no-string-processing",
         action="store_false",
         dest="no_string_processing",
-        help="If set the URLs and shell commands in the classes.dex will not be extracted."
+        help="If set the URLs and shell commands in the classes.dex file will not be extracted."
     )
     parser.add_argument(
         "-v",
+        "--verbose",
+        action="store_true",
+        dest="verbose",
+        help="Show verbose logs."
+    )
+    parser.add_argument(
+        "-V",
         "--version",
         action="version",
         version="NinjaDroid " + VERSION,
-        help="Show program's version and number."
+        help="Show version information."
     )
     return parser.parse_args()
 
 
 def read_target_file(filepath: str, no_string_processing: bool) -> Optional[APK]:
     apk = None
-    logger.info("Reading %s...", filepath)
+    logger.debug("Reading %s...", filepath)
     try:
-        apk = APK(filepath, no_string_processing)
+        apk = APK(filepath, no_string_processing, logger)
     except APKParsingError:
         logger.error("The target file ('%s') must be an APK package!", filepath)
     except ParsingError:
