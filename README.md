@@ -131,7 +131,7 @@ $ cp /path/to/your/package.apk apks/package.apk
 Then launch the following command:
 
 ```
-$ docker run -it --rm -v $(pwd)/apks:/apks ninjadroid:latest json /apks/package.apk
+$ docker run --name ninjadroid -it --rm -v $(pwd)/apks:/apks ninjadroid:latest json /apks/package.apk
 ```
 Or alternatively:
 ```
@@ -141,7 +141,7 @@ $ make run-docker apk=/apks/package.apk
 If you want to store the extracted files and info, then launch the following command:
 ```
 $ mkdir output
-$ docker run --rm -v $(pwd)/apks:/apks -v $(pwd)/output:/output ninjadroid:latest ninjadroid -e /output /apks/package.apk
+$ docker run --name ninjadroid --rm -v $(pwd)/apks:/apks -v $(pwd)/output:/output ninjadroid:latest ninjadroid -e /output /apks/package.apk
 ```
 Or alternatively:
 ```
@@ -152,17 +152,38 @@ $ make run-docker-with-output apk=/apks/package.apk
 The result will be stored into the _ninjadroid/output_ directory.
 
 
+## Run checkstyle:
+Once you've configured it (see the _"Configuration"_ section), to run the checkstyle execute:
+```
+$ pylint ninjadroid.py
+```
+Or alternatively:
+```
+$ make checkstyle
+```
+**NOTE:** This is using [`pylint`](https://github.com/PyCQA/pylint) under-the-hood.
+
+
 ## Run Tests:
 Once you've configured it (see the _"Configuration"_ section), you can also run NinjaDroid tests as follows.
 
 ### Locally:
 To run the tests in your local machine, launch the following command:
 ```
+$ python3 -m unittest
+```
+Or alternatively:
+```
 $ make test
 ```
 
 ### Docker:
 To run the tests in Docker, launch the following command:
+```
+$ docker build -t ninjadroid:latest .
+$ docker run --name ninjadroid --rm -w /opt/NinjaDroid ninjadroid:latest python3 -m unittest
+```
+Or alternatively:
 ```
 $ make build-docker
 $ make test-docker
