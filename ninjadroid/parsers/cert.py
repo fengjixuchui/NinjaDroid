@@ -1,17 +1,17 @@
-from datetime import datetime
-from dateutil.tz import tzutc
-from fnmatch import fnmatch
 import re
-import subprocess
+from subprocess import PIPE, Popen
+from datetime import datetime
+from fnmatch import fnmatch
 from typing import Dict
+from dateutil.tz import tzutc
 import tzlocal
 
-from ninjadroid.parsers.cert_interface import CertInterface
 from ninjadroid.parsers.file import File
 from ninjadroid.errors.cert_parsing_error import CertParsingError
 
 
-class Cert(File, CertInterface):
+# pylint: disable=too-many-instance-attributes
+class Cert(File):
     """
     Parser implementation for Android CERT.RSA/DSA certificate file.
     """
@@ -55,24 +55,25 @@ class Cert(File, CertInterface):
     }
 
     def __init__(self, filepath: str, filename: str = ""):
-        super(Cert, self).__init__(filepath, filename)
+        super().__init__(filepath, filename)
 
-        self._raw = self._extract_decoded_cert_file()
+        self._raw = self._extract_decoded_cert_file(self.get_file_path())
         self._serial_number = self._extract_string_pattern(self._raw, "^" + Cert.__LABEL_SERIAL_NUMBER + "(.*)$")
         self._extract_and_set_validity()
         self._extract_and_set_fingerprint()
         self._extract_and_set_owner()
         self._extract_and_set_issuer()
 
-    def _extract_decoded_cert_file(self) -> str:
+    @staticmethod
+    def _extract_decoded_cert_file(file_path) -> str:
         """
         Retrieve decoded (PKCS7) certificate file, using keytool utility.
 
         :return: The raw decoded file.
         :raise CertParsingError: If there is a keytool error.
         """
-        command = "keytool -printcert -file " + self.get_file_path()
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=None, shell=True)
+        command = "keytool -printcert -file " + file_path
+        process = Popen(command, stdout=PIPE, stderr=None, shell=True)
         raw = process.communicate()[0].decode("utf-8")
         if re.search("^keytool error", raw, re.IGNORECASE):
             raise CertParsingError
@@ -92,15 +93,15 @@ class Cert(File, CertInterface):
             cert_validity_until_pattern = Cert.__LABEL_VALIDITY["until"] + "(.*)$"
             self._validity["until"] = self._extract_string_pattern(validity, cert_validity_until_pattern)
 
-            tz = tzlocal.get_localzone()
+            time_zone = tzlocal.get_localzone()
 
             try:
                 dt_from = datetime.strptime(self._validity["from"], "%a %b %d %H:%M:%S %Z %Y")
-                local_dt_from = tz.localize(dt_from)
+                local_dt_from = time_zone.localize(dt_from)
                 utc_dt_from = local_dt_from.astimezone(tzutc())
 
                 dt_until = datetime.strptime(self._validity["until"], "%a %b %d %H:%M:%S %Z %Y")
-                local_dt_until = tz.localize(dt_until)
+                local_dt_until = time_zone.localize(dt_until)
                 utc_dt_until = local_dt_until.astimezone(tzutc())
 
             except ValueError:
@@ -168,8 +169,7 @@ class Cert(File, CertInterface):
         match = re.search(pattern, string, re.MULTILINE | re.IGNORECASE)
         if match and match.group(1):
             return match.group(1).strip()
-        else:
-            return ""
+        return ""
 
     @staticmethod
     def looks_like_a_cert(filename: str) -> bool:
@@ -178,7 +178,7 @@ class Cert(File, CertInterface):
             fnmatch(filename, Cert.__FILE_NAME_CERT_ALT_REGEX)
 
     def dump(self) -> Dict:
-        dump = super(Cert, self).dump()
+        dump = super().dump()
         dump["serial_number"] = self._serial_number
         dump["validity"] = self._validity
         dump["fingerprint"] = {}

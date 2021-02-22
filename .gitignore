@@ -1,6 +1,9 @@
 *.pyc
 __pycache__
+.coverage
 .DS_Store
 .idea/*
 output/*
 apks/*
+flatpak/build/*
+.flatpak-builder/*
