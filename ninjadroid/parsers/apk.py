@@ -1,132 +1,187 @@
 from logging import getLogger, Logger
-import os
-import shutil
-import tempfile
-from typing import Dict, List, Sequence, Union
-from zipfile import ZipFile, is_zipfile
+from shutil import rmtree
+from tempfile import mkdtemp
+from typing import Dict, List, Optional, Union
+from zipfile import ZipFile
 
 from ninjadroid.aapt.aapt import Aapt
-from ninjadroid.errors.apk_parsing_error import APKParsingError
-from ninjadroid.errors.android_manifest_parsing_error import AndroidManifestParsingError
-from ninjadroid.errors.cert_parsing_error import CertParsingError
-from ninjadroid.errors.parsing_error import ParsingError
-from ninjadroid.parsers.android_manifest import AndroidManifest
-from ninjadroid.parsers.cert import Cert
-from ninjadroid.parsers.dex import Dex
-from ninjadroid.parsers.file import File
+from ninjadroid.parsers.manifest import AndroidManifest, AndroidManifestParser, AndroidManifestParsingError
+from ninjadroid.parsers.cert import Cert, CertParser, CertParsingError
+from ninjadroid.parsers.dex import Dex, DexParser
+from ninjadroid.parsers.file import File, FileParser, FileParsingError
 
 
-global_logger = getLogger(__name__)
+default_logger = getLogger(__name__)
 
 
 class APK(File):
     """
-    Parser implementation for Android APK package.
+    Android APK package information.
     """
 
-    _TEMPORARY_DIR = ".ninjadroid"
+    # pylint: disable=too-many-arguments
+    def __init__(
+            self,
+            filename: str,
+            size: str,
+            md5hash: str,
+            sha1hash: str,
+            sha256hash: str,
+            sha512hash: str,
+            app_name: str,
+            cert: Cert,
+            manifest: AndroidManifest,
+            dex_files: List[Dex],
+            other_files: List[File]
+    ):
+        super().__init__(filename, size, md5hash, sha1hash, sha256hash, sha512hash)
+        self.__app_name = app_name
+        self.__cert = cert
+        self.__manifest = manifest
+        self.__dex = dex_files
+        self.__other = other_files
 
-    def __init__(self, filepath: str, extended_processing: bool = True, logger: Logger = global_logger):
-        super().__init__(filepath)
+    def get_app_name(self) -> str:
+        return self.__app_name
+
+    def get_cert(self) -> Union[Cert,File]:
+        return self.__cert
+
+    def get_manifest(self) -> Union[AndroidManifest,File]:
+        return self.__manifest
+
+    def get_dex_files(self) -> List[Union[Dex,File]]:
+        return self.__dex
+
+    def get_other_files(self) -> List[File]:
+        return self.__other
+
+    def as_dict(self) -> Dict:
+        dump = super().as_dict()
+        dump["name"] = self.__app_name
+        dump["cert"] = self.__cert.as_dict()
+        dump["manifest"] = self.__manifest.as_dict()
+        dump["dex"] = [dex.as_dict() for dex in self.__dex]
+        dump["other"] = [file.as_dict() for file in self.__other]
+        return dump
+
+
+
+class ApkParsingError(FileParsingError):
+    """
+    Android APK package parsing error.
+    """
+
+    def __init__(self):
+        FileParsingError.__init__(self)
+
+    def __str__(self):
+        return "Cannot parse the file as an APK!"
+
+
+class ApkParser:
+    """
+    Parser implementation for Android APK packages.
+    """
+
+    __TEMPORARY_DIR = ".ninjadroid"
+
+    def __init__(self, logger: Logger = default_logger):
         self.logger = logger
+        self.file_parser = FileParser(logger)
+        self.manifest_parser = AndroidManifestParser(logger)
+        self.cert_parser = CertParser(logger)
+        self.dex_parser = DexParser(logger)
 
-        if not self.looks_like_an_apk(filepath):
-            raise APKParsingError
-
-        self._files = []  # type: List
-        self._dex_files = []  # type: List[Union[Dex,File]]
-        self._extract_and_set_entries(extended_processing)
-        if self._manifest is None or self._cert is None:
-            raise APKParsingError
-
-        self._app_name = Aapt.get_app_name(filepath)
-
-    def _extract_and_set_entries(self, extended_processing: bool):
+    def parse(self, filepath: str, extended_processing: bool = True):
         """
-        Extract the APK package entries (e.g. AndroidManifest.xml, CERT.RSA, classes.dex, ...) and
-        set the corresponding attributes.
-
-        :param extended_processing: If True (default), the URLs and shell commands in the classes.dex will be extracted.
-        :return: If one of the APK entries is invalid.
-        :raise APKParsingError:
+        :param filepath: path of the APK file
+        :param extended_processing: (optional) whether should parse all information or only a summary. True by default.
+        :return: the parsed APK file
+        :raise: ApkParsingError if cannot parse the file as an APK
         """
-        exists_invalid_entry = False
+        self.logger.debug("Parsing APK file: filepath=\"%s\"", filepath)
+        if not self.looks_like_apk(filepath):
+            raise ApkParsingError
 
-        apk_filepath = self.get_file_path()
-        with ZipFile(apk_filepath) as apk:
-            tmpdir = tempfile.mkdtemp(APK._TEMPORARY_DIR)
+        file = self.file_parser.parse(filepath)
+        cert = None
+        manifest = None
+        dex_files = []
+        other_files = []
 
+        with ZipFile(filepath) as apk:
+            tmpdir = self.__create_temporary_directory(ApkParser.__TEMPORARY_DIR)
             for filename in apk.namelist():
                 entry_filepath = apk.extract(filename, tmpdir)
                 self.logger.debug("Extracting APK resource %s to %s", filename, entry_filepath)
-
                 try:
-                    if AndroidManifest.looks_like_a_manifest(filename):
-                        self.logger.debug("%s looks like a manifest", filename)
-                        self._manifest = AndroidManifest(entry_filepath, True, apk_filepath, extended_processing)
-                    elif Cert.looks_like_a_cert(filename):
-                        self.logger.debug("%s looks like a certificate", filename)
-                        self._cert = self._extract_cert(entry_filepath, filename, extended_processing)
-                    elif Dex.looks_like_a_dex(filename):
-                        self.logger.debug("%s looks like a DEX", filename)
-                        dex = self._extract_dex(entry_filepath, filename, extended_processing)
-                        self._dex_files.append(dex)
+                    if AndroidManifestParser.looks_like_manifest(filename):
+                        self.logger.debug("%s looks like an AndroidManifest.xml file", filename)
+                        manifest = self.manifest_parser.parse(entry_filepath, True, filepath, extended_processing)
+                    elif CertParser.looks_like_cert(filename):
+                        self.logger.debug("%s looks like a CERT file", filename)
+                        cert = self.__parse_cert(entry_filepath, filename, extended_processing)
+                    elif DexParser.looks_like_dex(filename):
+                        self.logger.debug("%s looks like a dex file", filename)
+                        dex = self.__parse_dex(entry_filepath, filename, extended_processing)
+                        dex_files.append(dex)
                     else:
-                        self.logger.debug("%s looks like a general resource", filename)
-                        if extended_processing and not os.path.isdir(entry_filepath):
-                            self._files.append(File(entry_filepath, filename))
-                except (ParsingError, AndroidManifestParsingError, CertParsingError):
-                    exists_invalid_entry = True
+                        self.logger.debug("%s looks like a generic file", filename)
+                        entry = self.__parse_file(entry_filepath, filename, extended_processing)
+                        if entry is not None:
+                            other_files.append(entry)
+                except (AndroidManifestParsingError, CertParsingError, FileParsingError) as error:
+                    self.__remove_directory(tmpdir)
+                    raise ApkParsingError from error
+            self.__remove_directory(tmpdir)
 
+        if manifest is None or cert is None or not dex_files:
+            raise ApkParsingError
+
+        return APK(
+            filename=file.get_file_name(),
+            size=file.get_size(),
+            md5hash=file.get_md5(),
+            sha1hash=file.get_sha1(),
+            sha256hash=file.get_sha256(),
+            sha512hash=file.get_sha512(),
+            app_name=Aapt.get_app_name(filepath),
+            cert=cert,
+            manifest=manifest,
+            dex_files=dex_files,
+            other_files=other_files
+        )
+
+    def __parse_cert(self, filepath: str, filename: str, extended_processing: bool) -> Union[Cert,File]:
+        if extended_processing:
+            return self.cert_parser.parse(filepath, filename)
+        return self.file_parser.parse(filepath, filename)
+
+    def __parse_dex(self, filepath: str, filename: str, extended_processing: bool) -> Union[Dex,File]:
+        if extended_processing:
+            return self.dex_parser.parse(filepath, filename)
+        return self.file_parser.parse(filepath, filename)
+
+    def __parse_file(self, filepath: str, filename: str, extended_processing: bool) -> Optional[File]:
+        if extended_processing and not FileParser.is_directory(filepath):
             try:
-                shutil.rmtree(tmpdir)
-            except OSError:
-                pass
-
-            if exists_invalid_entry:
-                raise APKParsingError
-
-    @classmethod
-    def _extract_cert(cls, filepath: str, filename: str, extended_processing: bool) -> bool:
-        if extended_processing:
-            return Cert(filepath, filename)
-        return File(filepath, filename)
-
-    @classmethod
-    def _extract_dex(cls, filepath: str, filename: str, extended_processing: bool) -> bool:
-        if extended_processing:
-            return Dex(filepath, filename)
-        return File(filepath, filename)
+                return self.file_parser.parse(filepath, filename)
+            except FileParsingError:
+                self.logger.error("Could not parse file '%s'!", filename)
+        return None
 
     @staticmethod
-    def looks_like_an_apk(filename: str) -> bool:
-        return File.is_a_file(filename) and is_zipfile(filename)
+    def __create_temporary_directory(path: str) -> str:
+        return mkdtemp(path)
 
-    def dump(self) -> Dict:
-        dump = super().dump()
-        dump["name"] = self._app_name
-        dump["cert"] = self._cert.dump() if self._cert is not None else None
-        dump["manifest"] = self._manifest.dump() if self._manifest is not None else None
-        dump["dex"] = [dex.dump() for dex in self._dex_files]
-        dump["other"] = []
-        for file in self._files:
-            dump["other"].append(file.dump())
-        return dump
+    @staticmethod
+    def __remove_directory(path: str):
+        try:
+            rmtree(path)
+        except OSError:
+            pass
 
-    def get_app_name(self) -> str:
-        return self._app_name
-
-    def get_files(self) -> List:
-        """
-        :return: All files except for AndroidManifest.xml, CERT.DSA/RSA and classes.dex files.
-        """
-        return self._files
-
-    def get_manifest(self) -> Union[AndroidManifest,File]:
-        return self._manifest
-
-    def get_cert(self) -> Union[Cert,File]:
-        return self._cert
-
-    def get_dex_files(self) -> Sequence[Union[Dex,File]]:
-        return self._dex_files
+    @staticmethod
+    def looks_like_apk(filename: str) -> bool:
+        return FileParser.is_zip_file(filename)

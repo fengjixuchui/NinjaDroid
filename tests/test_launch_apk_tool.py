@@ -6,9 +6,7 @@ from ninjadroid.use_cases.launch_apk_tool import LaunchApkTool
 
 class TestLaunchApkTool(unittest.TestCase):
     """
-    UnitTest for launch_apk_tool.py.
-
-    RUN: python -m unittest -v tests.test_launch_apk_tool
+    Test LaunchApkTool use case.
     """
 
     ANY_PATH = "any-path"

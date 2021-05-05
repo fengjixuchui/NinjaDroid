@@ -6,9 +6,7 @@ from ninjadroid.use_cases.generate_apk_info_report import GenerateApkInfoReport
 
 class TestGenerateApkInfoReport(unittest.TestCase):
     """
-    UnitTest for generate_apk_info_report.py.
-
-    RUN: python -m unittest -v tests.test_generate_apk_info_report
+    Test GenerateApkInfoReport use case.
     """
 
     ANY_FILE = "any-file"
@@ -25,7 +23,7 @@ class TestGenerateApkInfoReport(unittest.TestCase):
     @patch("builtins.open", new_callable=mock_open)
     def test_execute(self, mock_file, mock_os, mock_apk, mock_json):
         mock_os.path.join.return_value = TestGenerateApkInfoReport.ANY_JSON_PATH
-        mock_apk.dump.return_value = TestGenerateApkInfoReport.ANY_APK_DUMP
+        mock_apk.as_dict.return_value = TestGenerateApkInfoReport.ANY_APK_DUMP
         mock_json.dumps.return_value = TestGenerateApkInfoReport.ANY_JSON_REPORT
 
         self.sut.execute(
@@ -34,6 +32,7 @@ class TestGenerateApkInfoReport(unittest.TestCase):
             output_directory=TestGenerateApkInfoReport.ANY_DIRECTORY
         )
 
+        mock_apk.as_dict.assert_called_once_with()
         mock_json.dumps.assert_called_once_with(
             TestGenerateApkInfoReport.ANY_APK_DUMP,
             sort_keys=True,

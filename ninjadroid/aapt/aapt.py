@@ -13,15 +13,6 @@ class Aapt:
     """
 
     __AAPT_EXEC_PATH = os.path.join(os.path.dirname(__file__), "aapt")
-    __LABEL_APPLICATION = "^application: .*label='([^']*)' .*"
-    __LABEL_LAUNCHABLE_ACTIVITY = "^launchable-activity: .*label='([^']*)'.*"
-    __LABEL_PACKAGE_NAME = "package:(?:.*) name="
-    __LABEL_PACKAGE_VERSION_CODE = "package:(?:.*) versionCode="
-    __LABEL_PACKAGE_VERSION_NAME = "package:(?:.*) versionName="
-    __LABEL_SDK_MAX_VERSION = "maxSdkVersion:"
-    __LABEL_SDK_MIN_VERSION = "sdkVersion:"
-    __LABEL_SDK_TARGET_VERSION = "targetSdkVersion:"
-    __LABEL_PERMISSION_NAME = "uses-permission: name="
 
     def __init__(self, logger=global_logger):
         self.logger = logger
@@ -30,7 +21,7 @@ class Aapt:
     @classmethod
     def get_app_name(cls, filepath: str) -> Dict:
         try:
-            info = cls._dump_badging(filepath)
+            info = cls._execute_dump_badging(filepath)
         except RuntimeError:
             return ""
         return cls._extract_app_name(info)
@@ -47,7 +38,7 @@ class Aapt:
         }
 
         try:
-            info = cls._dump_badging(filepath)
+            info = cls._execute_dump_badging(filepath)
         except RuntimeError:
             return apk
 
@@ -75,12 +66,12 @@ class Aapt:
 
     @classmethod
     def get_manifest_info(cls, filepath: str) -> Dict:
-        activities = []  # type: List[Dict[str, str]]
-        services = []  # type: List[Dict[str, str]]
-        receivers = []  # type: List[Dict[str, str]]
+        activities = []
+        services = []
+        receivers = []
 
         try:
-            xmltree = cls._dump_xmltree(filepath)
+            xmltree = cls._execute_dump_xmltree(filepath)
             xmltree = xmltree[xmltree.index("application"):-1]
             activities = cls._extract_activities(xmltree)
             services = cls._extract_services(xmltree)
@@ -97,114 +88,107 @@ class Aapt:
     @classmethod
     def get_app_permissions(cls, filepath: str) -> List:
         try:
-            dump = cls._dump_permissions(filepath).splitlines()
+            dump = cls._execute_dump_permissions(filepath).splitlines()
         except RuntimeError:
             return []
 
         permissions = []
         for line in dump:
-            apk_permission_name_pattern = "^" + Aapt.__LABEL_PERMISSION_NAME + "'(.*)'$"
+            apk_permission_name_pattern = r"^uses-permission: name='(.*)'$"
             permission = Aapt._extract_string_pattern(line, apk_permission_name_pattern)
             if permission != "":
                 permissions.append(permission)
-        permissions.sort()
 
-        return permissions
-
-    @classmethod
-    def _dump_badging(cls, filepath: str) -> str:
-        """
-        Retrieve the aapt dump badging.
-        """
-        command = Aapt.__AAPT_EXEC_PATH + " dump badging " + filepath
-        return Aapt._launch_shell_command_and_get_result(command)
+        return sorted(permissions)
 
     @classmethod
-    def _dump_permissions(cls, filepath: str) -> str:
-        """
-        Retrieve the aapt dump permissions.
-        """
-        command = Aapt.__AAPT_EXEC_PATH + " dump permissions " + filepath
-        return Aapt._launch_shell_command_and_get_result(command)
+    def _execute_dump_badging(cls, filepath: str) -> str:
+        return Aapt._launch_shell_command_and_get_result(
+            command=Aapt.__AAPT_EXEC_PATH + " dump badging " + filepath
+        )
 
     @classmethod
-    def _dump_xmltree(cls, filepath: str) -> str:
-        """
-        Dump the XML tree of the AndroidManifest.xml file of a given APK package.
-        """
-        command = cls.__AAPT_EXEC_PATH + " dump xmltree " + filepath + " AndroidManifest.xml"
-        return cls._launch_shell_command_and_get_result(command)
+    def _execute_dump_permissions(cls, filepath: str) -> str:
+        return Aapt._launch_shell_command_and_get_result(
+            command=Aapt.__AAPT_EXEC_PATH + " dump permissions " + filepath
+        )
+
+    @classmethod
+    def _execute_dump_xmltree(cls, filepath: str) -> str:
+        return cls._launch_shell_command_and_get_result(
+            command=cls.__AAPT_EXEC_PATH + " dump xmltree " + filepath + " AndroidManifest.xml"
+        )
 
     @classmethod
     def _launch_shell_command_and_get_result(cls, command: str) -> str:
-        process = Popen(command, stdout=PIPE, stderr=None, shell=True)
-        return process.communicate()[0].decode("utf-8")
+        with Popen(command, stdout=PIPE, stderr=None, shell=True) as process:
+            return process.communicate()[0].decode("utf-8")
 
     @classmethod
     def _extract_app_name(cls, info: str) -> str:
-        app_name = cls._extract_string_pattern(info, cls.__LABEL_APPLICATION)
+        app_name = cls._extract_string_pattern(info, r"^application: .*label='([^']*)' .*")
         if app_name is None or app_name  == "":
-            app_name = cls._extract_string_pattern(info, cls.__LABEL_LAUNCHABLE_ACTIVITY)
+            app_name = cls._extract_string_pattern(info, r"^launchable-activity: .*label='([^']*)'.*")
         return app_name
 
     @classmethod
     def _extract_package_name(cls, info: str) -> str:
-        apk_package_name_pattern = "^" + cls.__LABEL_PACKAGE_NAME + "'([a-zA-Z0-9\-\.]+)'"  # pylint: disable=anomalous-backslash-in-string
+        apk_package_name_pattern = r"^package:(?:.*) name='([a-zA-Z0-9\-\.]+)'"
         return cls._extract_string_pattern(info, apk_package_name_pattern)
 
     @classmethod
     def _extract_version_name(cls, info: str) -> str:
-        apk_version_name_pattern = "^" + cls.__LABEL_PACKAGE_VERSION_NAME + "'([a-zA-Z0-9_\-\.]+)'"  # pylint: disable=anomalous-backslash-in-string
+        apk_version_name_pattern = r"^package:(?:.*) versionName='([a-zA-Z0-9_\-\.]+)'"
         return cls._extract_string_pattern(info, apk_version_name_pattern)
 
     @classmethod
     def _extract_version_code(cls, info: str) -> Optional[int]:
         try:
-            apk_version_code_pattern = "^" + cls.__LABEL_PACKAGE_VERSION_CODE + "'([0-9\.]+)'"  # pylint: disable=anomalous-backslash-in-string
+            apk_version_code_pattern = r"^package:(?:.*) versionCode='([0-9\.]+)'"
             return int(cls._extract_string_pattern(info, apk_version_code_pattern))
         except ValueError:
             return None
 
     @classmethod
     def _extract_sdk_target_version(cls, info: str) -> str:
-        apk_sdk_target_pattern = "^" + cls.__LABEL_SDK_TARGET_VERSION + "'(.+)'"
+        apk_sdk_target_pattern = r"^targetSdkVersion:'(.+)'"
         return cls._extract_string_pattern(info, apk_sdk_target_pattern)
 
     @classmethod
     def _extract_sdk_max_version(cls, info: str) -> str:
-        apk_sdk_max_pattern = "^" + cls.__LABEL_SDK_MAX_VERSION + "'(.+)'"
+        apk_sdk_max_pattern = r"^maxSdkVersion:'(.+)'"
         return cls._extract_string_pattern(info, apk_sdk_max_pattern)
 
     @classmethod
     def _extract_sdk_min_version(cls, info: str) -> str:
-        apk_sdk_min_pattern = "^" + cls.__LABEL_SDK_MIN_VERSION + "'(.+)'"
+        apk_sdk_min_pattern = r"^sdkVersion:'(.+)'"
         return Aapt._extract_string_pattern(info, apk_sdk_min_pattern)
 
     @classmethod
-    def _extract_activities(cls, xmltree: str) -> List:
+    def _extract_activities(cls, xmltree: str) -> List[str]:
         activities = []
-        for offs in cls._find_all(xmltree, "activity"):
+        for offs in cls._find_all(xmltree, "E: activity"):
             activity = xmltree[offs:-1]
-            idx = cls._find_between(activity, "android:name(", ")=\"")
-            activities.append({"name": cls._find_between(activity, "android:name(" + idx + ")=\"", "\"")})
+            idx = cls._find_between(activity, "A: android:name(", ")=\"")
+            activities.append(cls._find_between(activity, "A: android:name(" + idx + ")=\"", "\""))
         return activities
 
     @classmethod
-    def _extract_services(cls, xmltree: str) -> List:
+    def _extract_services(cls, xmltree: str) -> List[str]:
         services = []
-        for offs in cls._find_all(xmltree, "service"):
+        for offs in cls._find_all(xmltree, "E: service"):
             service = xmltree[offs:-1]
-            idx = cls._find_between(service, "android:name(", ")=\"")
-            services.append({"name": cls._find_between(service, "android:name(" + idx + ")=\"", "\"")})
+            idx = cls._find_between(service, "A: android:name(", ")=\"")
+            services.append(cls._find_between(service, "A: android:name(" + idx + ")=\"", "\""))
         return services
 
     @classmethod
-    def _extract_broadcast_receivers(cls, xmltree: str) -> List:
+    def _extract_broadcast_receivers(cls, xmltree: str) -> List[str]:
         receivers = []
-        for offs in cls._find_all(xmltree, "receiver"):
+        for offs in cls._find_all(xmltree, "E: receiver"):
             receiver = xmltree[offs:-1]
-            idx = cls._find_between(receiver, "android:name(", ")=\"")
-            receivers.append({"name": cls._find_between(receiver, "android:name(" + idx + ")=\"", "\"")})
+            idx = cls._find_between(receiver, "A: android:name(", ")=\"")
+            receivers.append(cls._find_between(receiver, "A: android:name(" + idx + ")=\"", "\""))
         return receivers
 
     @staticmethod

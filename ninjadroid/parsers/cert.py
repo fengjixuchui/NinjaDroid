@@ -1,219 +1,342 @@
+from logging import getLogger, Logger
 import re
 from subprocess import PIPE, Popen
 from datetime import datetime
 from fnmatch import fnmatch
-from typing import Dict
+from typing import Any, Dict
 from dateutil.tz import tzutc
-import tzlocal
+from tzlocal import get_localzone
 
-from ninjadroid.parsers.file import File
-from ninjadroid.errors.cert_parsing_error import CertParsingError
+from ninjadroid.parsers.file import File, FileParser, FileParsingError
+
+
+default_logger = getLogger(__name__)
+
+
+class CertValidity:
+    """
+   CERT validity information.
+   """
+
+    def __init__(self, valid_from: str, valid_to: str):
+        self.__from = valid_from
+        self.__to = valid_to
+
+    def __eq__(self, other: Any):
+        return isinstance(other, CertValidity) and \
+               self.__from == other.get_from() and \
+               self.__to == other.get_to()
+
+    def get_from(self) -> str:
+        return self.__from
+
+    def get_to(self) -> str:
+        return self.__to
+
+    def as_dict(self) -> Dict:
+        return {
+            "from": self.__from,
+            "until": self.__to
+        }
+
+
+class CertFingerprint:
+    """
+   CERT fingerprint information.
+   """
+
+    # pylint: disable=too-many-arguments
+    def __init__(self, md5: str, sha1: str, sha256: str, signature: str, version: str):
+        self.__md5 = md5
+        self.__sha1 = sha1
+        self.__sha256 = sha256
+        self.__signature = signature
+        self.__version = version
+
+    def __eq__(self, other: Any):
+        return isinstance(other, CertFingerprint) and \
+               self.__md5 == other.get_md5() and \
+               self.__sha1 == other.get_sha1() and \
+               self.__sha256 == other.get_sha256() and \
+               self.__signature == other.get_signature() and \
+               self.__version == other.get_version()
+
+    def get_md5(self) -> str:
+        return self.__md5
+
+    def get_sha1(self) -> str:
+        return self.__sha1
+
+    def get_sha256(self) -> str:
+        return self.__sha256
+
+    def get_signature(self) -> str:
+        return self.__signature
+
+    def get_version(self) -> str:
+        return self.__version
+
+    def as_dict(self) -> Dict:
+        return {
+            "md5": self.__md5,
+            "sha1": self.__sha1,
+            "sha256": self.__sha256,
+            "signature": self.__signature,
+            "version": self.__version
+        }
 
 
 # pylint: disable=too-many-instance-attributes
+class CertParticipant:
+    """
+   CERT owner/issuer information.
+   """
+
+    # pylint: disable=too-many-arguments
+    def __init__(
+            self,
+            name: str,
+            email: str,
+            unit: str,
+            organization: str,
+            city: str,
+            state: str,
+            country: str,
+            domain: str
+    ):
+        self.__name = name
+        self.__email = email
+        self.__unit = unit
+        self.__organization = organization
+        self.__city = city
+        self.__state = state
+        self.__country = country
+        self.__domain = domain
+
+    def __eq__(self, other: Any):
+        return isinstance(other, CertParticipant) and \
+               self.__name == other.get_name() and \
+               self.__email == other.get_email() and \
+               self.__unit == other.get_unit() and \
+               self.__organization == other.get_organization() and \
+               self.__city == other.get_city() and \
+               self.__state == other.get_state() and \
+               self.__country == other.get_country() and \
+               self.__domain == other.get_domain()
+
+    def get_name(self) -> str:
+        return self.__name
+
+    def get_email(self) -> str:
+        return self.__email
+
+    def get_unit(self) -> str:
+        return self.__unit
+
+    def get_organization(self) -> str:
+        return self.__organization
+
+    def get_city(self) -> str:
+        return self.__city
+
+    def get_state(self) -> str:
+        return self.__state
+
+    def get_country(self) -> str:
+        return self.__country
+
+    def get_domain(self) -> str:
+        return self.__domain
+
+    def as_dict(self) -> Dict:
+        return {
+            "name": self.__name,
+            "email": self.__email,
+            "unit": self.__unit,
+            "organization": self.__organization,
+            "city": self.__city,
+            "state": self.__state,
+            "country": self.__country,
+            "domain": self.__domain,
+        }
+
+
 class Cert(File):
+    """
+   Android CERT.RSA/DSA certificate file information.
+   """
+
+    # pylint: disable=too-many-arguments
+    def __init__(
+            self,
+            filename: str,
+            size: str,
+            md5hash: str,
+            sha1hash: str,
+            sha256hash: str,
+            sha512hash: str,
+            serial_number: str,
+            validity: CertValidity,
+            fingerprint: CertFingerprint,
+            owner: CertParticipant,
+            issuer: CertParticipant
+    ):
+        super().__init__(filename, size, md5hash, sha1hash, sha256hash, sha512hash)
+        self.__serial_number = serial_number
+        self.__validity = validity
+        self.__fingerprint = fingerprint
+        self.__owner = owner
+        self.__issuer = issuer
+
+    def get_serial_number(self) -> str:
+        return self.__serial_number
+
+    def get_validity(self) -> CertValidity:
+        return self.__validity
+
+    def get_fingerprint(self) -> CertFingerprint:
+        return self.__fingerprint
+
+    def get_owner(self) -> CertParticipant:
+        return self.__owner
+
+    def get_issuer(self) -> CertParticipant:
+        return self.__issuer
+
+    def as_dict(self) -> Dict:
+        dump = super().as_dict()
+        dump["serial_number"] = self.__serial_number
+        dump["validity"] = self.__validity.as_dict()
+        dump["fingerprint"] = self.__fingerprint.as_dict()
+        dump["owner"] = self.__owner.as_dict()
+        dump["issuer"] = self.__issuer.as_dict()
+        return dump
+
+
+class CertParsingError(FileParsingError):
+    """
+   Android CERT.RSA/DSA certificate file parsing error.
+   """
+
+    def __init__(self):
+        FileParsingError.__init__(self)
+
+    def __str__(self):
+        return "Cannot parse the file as ad CERT!"
+
+
+class CertParser:
     """
     Parser implementation for Android CERT.RSA/DSA certificate file.
     """
 
-    __FILE_NAME_CERT_RSA = "META-INF/CERT.RSA"
-    __FILE_NAME_CERT_DSA = "META-INF/CERT.DSA"
-    __FILE_NAME_CERT_ALT_REGEX = "META-INF/*.RSA"
+    def __init__(self, logger: Logger = default_logger):
+        self.logger = logger
 
-    __LABEL_SERIAL_NUMBER = "Serial number: "
-    __LABEL_VALIDITY = {
-        "label": "Valid ",
-        "from": "from: ",
-        "until": "until: ",
-    }
-    __LABEL_FINGERPRINT_MD5 = "\t MD5: "
-    __LABEL_FINGERPRINT_SHA1 = "\t SHA1: "
-    __LABEL_FINGERPRINT_SHA256 = "\t SHA256: "
-    __LABEL_FINGERPRINT_SIGNATURE = r"\t?\s?Signature algorithm name: "
-    __LABEL_FINGERPRINT_VERSION = r"\t?\s?Version: "
-    __LABEL_OWNER = {
-        "label": "Owner: ",
-        "name": "CN=",
-        "email": "EMAILADDRESS=",
-        "unit": "OU=",
-        "organization": "O=",
-        "city": "L=",
-        "state": "ST=",
-        "country": "C=",
-        "domain": "DC=",
-    }
-    __LABEL_ISSUER = {
-        "label": "Issuer: ",
-        "name": "CN=",
-        "email": "EMAILADDRESS=",
-        "unit": "OU=",
-        "organization": "O=",
-        "city": "L=",
-        "state": "ST=",
-        "country": "C=",
-        "domain": "DC=",
-    }
+    def parse(self, filepath: str, filename: str = "") -> Cert:
+        """
+        :param filepath: path of the CERT file
+        :param filename: name of the CERT file
+        :return: the parsed CERT file
+        :raise: FileParsingError if cannot parse the file
+        :raise: CertParsingError if cannot parse the file as a CERT
+        """
+        self.logger.debug("Parsing CERT file: filepath=\"%s\", filename=\"%s\"", filepath, filename)
+        file = FileParser(self.logger).parse(filepath, filename)
+        raw = self.parse_cert(filepath)
 
-    def __init__(self, filepath: str, filename: str = ""):
-        super().__init__(filepath, filename)
-
-        self._raw = self._extract_decoded_cert_file(self.get_file_path())
-        self._serial_number = self._extract_string_pattern(self._raw, "^" + Cert.__LABEL_SERIAL_NUMBER + "(.*)$")
-        self._extract_and_set_validity()
-        self._extract_and_set_fingerprint()
-        self._extract_and_set_owner()
-        self._extract_and_set_issuer()
+        return Cert(
+            filename=file.get_file_name(),
+            size=file.get_size(),
+            md5hash=file.get_md5(),
+            sha1hash=file.get_sha1(),
+            sha256hash=file.get_sha256(),
+            sha512hash=file.get_sha512(),
+            serial_number=self.__parse_string(raw, pattern=r"^Serial number: (.*)$"),
+            validity=self.parse_validity(raw),
+            fingerprint=self.parse_fingerprint(raw),
+            owner=self.parse_participant(raw, pattern=r"^Owner: (.*)$"),
+            issuer=self.parse_participant(raw, pattern=r"^Issuer: (.*)$")
+        )
 
     @staticmethod
-    def _extract_decoded_cert_file(file_path) -> str:
-        """
-        Retrieve decoded (PKCS7) certificate file, using keytool utility.
-
-        :return: The raw decoded file.
-        :raise CertParsingError: If there is a keytool error.
-        """
-        command = "keytool -printcert -file " + file_path
-        process = Popen(command, stdout=PIPE, stderr=None, shell=True)
-        raw = process.communicate()[0].decode("utf-8")
+    def parse_cert(filepath: str) -> str:
+        raw = ""
+        command = "keytool -printcert -file " + filepath
+        with Popen(command, stdout=PIPE, stderr=None, shell=True) as process:
+            raw = process.communicate()[0].decode("utf-8")
         if re.search("^keytool error", raw, re.IGNORECASE):
             raise CertParsingError
         return raw
 
-    def _extract_and_set_validity(self):
-        """
-        Extract the APK certificate validity.
-        """
-        self._validity = {"from": "", "until": ""}
+    @staticmethod
+    def parse_validity(raw: str) -> CertValidity:
+        valid_from = ""
+        valid_to = ""
 
-        cert_validity_pattern = "^" + Cert.__LABEL_VALIDITY["label"] + "(.*)$"
-        validity = self._extract_string_pattern(self._raw, cert_validity_pattern)
-        if validity:
-            cert_validity_from_pattern = "^" + Cert.__LABEL_VALIDITY["from"] + "(.*)" + Cert.__LABEL_VALIDITY["until"]
-            self._validity["from"] = self._extract_string_pattern(validity, cert_validity_from_pattern)
-            cert_validity_until_pattern = Cert.__LABEL_VALIDITY["until"] + "(.*)$"
-            self._validity["until"] = self._extract_string_pattern(validity, cert_validity_until_pattern)
-
-            time_zone = tzlocal.get_localzone()
+        raw_validity = CertParser.__parse_string(raw, pattern=r"^Valid (.*)$")
+        if raw_validity:
+            valid_from = CertParser.__parse_string(raw_validity, pattern=r"^from: (.*)until: ")
+            valid_to = CertParser.__parse_string(raw_validity, pattern=r"until: (.*)$")
 
             try:
-                dt_from = datetime.strptime(self._validity["from"], "%a %b %d %H:%M:%S %Z %Y")
-                local_dt_from = time_zone.localize(dt_from)
+                time_zone = get_localzone()
+
+                local_dt_from = time_zone.localize(
+                    dt=datetime.strptime(valid_from, "%a %b %d %H:%M:%S %Z %Y")
+                )
                 utc_dt_from = local_dt_from.astimezone(tzutc())
 
-                dt_until = datetime.strptime(self._validity["until"], "%a %b %d %H:%M:%S %Z %Y")
-                local_dt_until = time_zone.localize(dt_until)
+                local_dt_until = time_zone.localize(
+                    dt=datetime.strptime(valid_to, "%a %b %d %H:%M:%S %Z %Y")
+                )
                 utc_dt_until = local_dt_until.astimezone(tzutc())
-
             except ValueError:
                 pass
             else:
-                self._validity["from"] = utc_dt_from.strftime("%Y-%m-%d %H:%M:%SZ")
-                self._validity["until"] = utc_dt_until.strftime("%Y-%m-%d %H:%M:%SZ")
+                valid_from = utc_dt_from.strftime("%Y-%m-%d %H:%M:%SZ")
+                valid_to = utc_dt_until.strftime("%Y-%m-%d %H:%M:%SZ")
 
-    def _extract_and_set_fingerprint(self):
-        """
-        Extract APK certificate fingerprint data, such as MD5, SHA-1, SHA-256, signature and version.
-        """
-        self._fingerprint_md5 = self._extract_fingerprint_info(Cert.__LABEL_FINGERPRINT_MD5)
-        self._fingerprint_sha1 = self._extract_fingerprint_info(Cert.__LABEL_FINGERPRINT_SHA1)
-        self._fingerprint_sha256 = self._extract_fingerprint_info(Cert.__LABEL_FINGERPRINT_SHA256)
-        self._fingerprint_signature = self._extract_fingerprint_info(Cert.__LABEL_FINGERPRINT_SIGNATURE)
-        self._fingerprint_version = self._extract_fingerprint_info(Cert.__LABEL_FINGERPRINT_VERSION)
-
-    def _extract_fingerprint_info(self, info: str) -> str:
-        """
-        Extract a given APK certificate fingerprint information (e.g. MD5, SHA-1, SHA-256, signature and version).
-
-        :param info: The information to be extracted (e.g. Cert.__LABEL_FINGERPRINT_MD5, ...).
-        :return: The extracted fingerprint information.
-        """
-        cert_fingerprint_pattern = "^" + info + "(.*)$"
-        return self._extract_string_pattern(self._raw, cert_fingerprint_pattern)
-
-    def _extract_and_set_owner(self):
-        """
-        Extract the APK certificate owner details (e.g. name, email, ...).
-        """
-        self._owner = {}  # type: Dict[str, str]
-
-        cert_owner_pattern = "^" + Cert.__LABEL_OWNER["label"] + "(.*)$"
-        owner = self._extract_string_pattern(self._raw, cert_owner_pattern)
-        if owner:
-            owner = owner.replace(", ", "\n")
-            for key in Cert.__LABEL_OWNER:
-                cert_owner_key_pattern = "^" + Cert.__LABEL_OWNER[key] + "(.*)"
-                self._owner[key] = self._extract_string_pattern(owner, cert_owner_key_pattern)
-
-    def _extract_and_set_issuer(self):
-        """
-        Extract the APK certificate issuer details (e.g. name, email, ...).
-        """
-        self._issuer = {}  # type: Dict[str, str]
-        cert_issuer_pattern = "^" + Cert.__LABEL_ISSUER["label"] + "(.*)$"
-        issuer = self._extract_string_pattern(self._raw, cert_issuer_pattern)
-        if issuer:
-            issuer = issuer.replace(", ", "\n")
-            for key in Cert.__LABEL_ISSUER:
-                cert_issuer_key_pattern = "^" + Cert.__LABEL_ISSUER[key] + "(.*)"
-                self._issuer[key] = self._extract_string_pattern(issuer, cert_issuer_key_pattern)
+        return CertValidity(
+            valid_from=valid_from,
+            valid_to=valid_to
+        )
 
     @staticmethod
-    def _extract_string_pattern(string: str, pattern: str) -> str:
-        """
-        Extract the value of a given pattern from a given string.
+    def parse_fingerprint(raw: str) -> CertFingerprint:
+        return CertFingerprint(
+            md5=CertParser.__parse_string(raw, pattern=r"^\t MD5: (.*)$"),
+            sha1=CertParser.__parse_string(raw, pattern=r"^\t SHA1: (.*)$"),
+            sha256=CertParser.__parse_string(raw, pattern=r"^\t SHA256: (.*)$"),
+            signature=CertParser.__parse_string(raw, pattern=r"^\t?\s?Signature algorithm name: (.*)$"),
+            version=CertParser.__parse_string(raw, pattern=r"^\t?\s?Version: (.*)$")
+        )
 
-        :param string: The string to be searched.
-        :param pattern: The pattern to extract.
-        :return: The extracted pattern if any is found, an empty string otherwise.
-        """
+    @staticmethod
+    def parse_participant(raw: str, pattern: str) -> CertParticipant:
+        raw_owner = CertParser.__parse_string(raw, pattern=pattern)
+        if raw_owner:
+            raw_owner = raw_owner.replace(", ", "\n")
+        return CertParticipant(
+            name=CertParser.__parse_string(raw_owner, pattern=r"^CN=(.*)"),
+            email=CertParser.__parse_string(raw_owner, pattern=r"^EMAILADDRESS=(.*)"),
+            unit=CertParser.__parse_string(raw_owner, pattern=r"^OU=(.*)"),
+            organization=CertParser.__parse_string(raw_owner, pattern=r"^O=(.*)"),
+            city=CertParser.__parse_string(raw_owner, pattern=r"^L=(.*)"),
+            state=CertParser.__parse_string(raw_owner, pattern=r"^ST=(.*)"),
+            country=CertParser.__parse_string(raw_owner, pattern=r"^C=(.*)"),
+            domain=CertParser.__parse_string(raw_owner, pattern=r"^DC=(.*)")
+        )
+
+    @staticmethod
+    def __parse_string(string: str, pattern: str) -> str:
         match = re.search(pattern, string, re.MULTILINE | re.IGNORECASE)
         if match and match.group(1):
             return match.group(1).strip()
         return ""
 
     @staticmethod
-    def looks_like_a_cert(filename: str) -> bool:
-        return filename == Cert.__FILE_NAME_CERT_RSA or \
-            filename == Cert.__FILE_NAME_CERT_DSA or \
-            fnmatch(filename, Cert.__FILE_NAME_CERT_ALT_REGEX)
-
-    def dump(self) -> Dict:
-        dump = super().dump()
-        dump["serial_number"] = self._serial_number
-        dump["validity"] = self._validity
-        dump["fingerprint"] = {}
-        dump["fingerprint"]["md5"] = self._fingerprint_md5
-        dump["fingerprint"]["sha1"] = self._fingerprint_sha1
-        dump["fingerprint"]["sha256"] = self._fingerprint_sha256
-        dump["fingerprint"]["signature"] = self._fingerprint_signature
-        dump["fingerprint"]["version"] = self._fingerprint_version
-        dump["owner"] = self._owner
-        dump["issuer"] = self._issuer
-        return dump
-
-    def get_serial_number(self) -> str:
-        return self._serial_number
-
-    def get_validity(self) -> str:
-        return self._validity
-
-    def get_fingerprint_md5(self) -> str:
-        return self._fingerprint_md5
-
-    def get_fingerprint_sha1(self) -> str:
-        return self._fingerprint_sha1
-
-    def get_fingerprint_sha256(self) -> str:
-        return self._fingerprint_sha256
-
-    def get_fingerprint_signature(self) -> str:
-        return self._fingerprint_signature
-
-    def get_fingerprint_version(self) -> str:
-        return self._fingerprint_version
-
-    def get_owner(self) -> Dict:
-        return self._owner
-
-    def get_issuer(self) -> Dict:
-        return self._issuer
+    def looks_like_cert(filename: str) -> bool:
+        return filename == "META-INF/CERT.RSA" or \
+            filename == "META-INF/CERT.DSA" or \
+            fnmatch(filename, "META-INF/*.RSA")

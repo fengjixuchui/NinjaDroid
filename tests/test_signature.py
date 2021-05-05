@@ -1,63 +1,59 @@
 import unittest
+from parameterized import parameterized
 
 from ninjadroid.signatures.signature import Signature
 
 
 class TestSignature(unittest.TestCase):
     """
-    UnitTest for signature.py.
-
-    RUN: python -m unittest -v tests.test_signature
+    Test Signature parser.
     """
 
-    valid_commands = [
-        "apk",
-        "root",
-        "hack",
-        "esploid",
-        "tattoo",
-        "AdMob",
-    ]
+    sut = Signature()
 
-    invalid_commands = [
-        "http://www.domain.com",
-        "adbd",
-        "/system/bin",
-        "VersionConstants.java"
-    ]
+    @parameterized.expand([
+        ["apk", True],
+        ["root", True],
+        ["hack", True],
+        ["esploid", True],
+        ["tattoo", True],
+        ["AdMob", True],
+        ["http://www.domain.com", False],
+        ["adbd", False],
+        ["/system/bin", False],
+        ["VersionConstants.java", False],
+    ])
+    def test_is_valid(self, raw_string, expected):
+        result = self.sut.is_valid(raw_string)
 
-    strings_containing_commands = {
-        '"mOnRootMePleaseDialogClickListener': "\"mOnRootMePleaseDialogClickListener",
-        'str_root_already_rooted': "str_root_already_rooted",
-        'tv_gen_exploit_msg': "tv_gen_exploit_msg",
-        'tattoo_hack_g6561203.ko': "tattoo_hack_g6561203.ko",
-        '6ixxx': "6ixxx",
-        '#preserveType: %b, type: %s, obj: %s': "#preserveType: %b, type: %s, obj: %s",
-        'Mozilla/5.0 (Linux; U; Android %s) AppleWebKit/525.10+ (KHTML, like Gecko) Version/3.0.4 Mobile Safari/523.12.2 (AdMob-ANDROID-%s)': "Mozilla/5.0 (Linux; U; Android %s) AppleWebKit/525.10+ (KHTML, like Gecko) Version/3.0.4 Mobile Safari/523.12.2 (AdMob-ANDROID-%s)",
-        '8Lcom/corner23/android/universalandroot/UniversalAndroot;': "8Lcom/corner23/android/universalandroot/UniversalAndroot;",
-    }
+        self.assertEqual(expected, result)
 
-    @classmethod
-    def setUpClass(cls):
-        cls.signature = Signature()
+    @parameterized.expand([
+        ["\"mOnRootMePleaseDialogClickListener", "\"mOnRootMePleaseDialogClickListener", True],
+        ["str_root_already_rooted", "str_root_already_rooted", True],
+        ["tv_gen_exploit_msg", "tv_gen_exploit_msg", True],
+        ["tattoo_hack_g6561203.ko", "tattoo_hack_g6561203.ko", True],
+        ["6ixxx", "6ixxx", True],
+        ["#preserveType: %b, type: %s, obj: %s", "#preserveType: %b, type: %s, obj: %s", True],
+        [
+            "Mozilla/5.0 (Linux; U; Android %s) Version/3.0.4 Mobile Safari/523.12.2 (AdMob-ANDROID-%s)",
+            "Mozilla/5.0 (Linux; U; Android %s) Version/3.0.4 Mobile Safari/523.12.2 (AdMob-ANDROID-%s)",
+            True
+        ],
+        [
+            "8Lcom/corner23/android/universalandroot/UniversalAndroot;",
+            "8Lcom/corner23/android/universalandroot/UniversalAndroot;",
+            True
+        ],
+        [" - no match - ", None, False],
+        ["http://www.domain.com", None, False],
+        ["chmod 777", None, False],
+    ])
+    def test_search(self, pattern, expected_match, expected_is_valid):
+        match, is_valid = self.sut.search(pattern)
 
-    def test_is_valid(self):
-        for string in TestSignature.valid_commands:
-            is_valid = self.signature.is_valid(string)
-
-            self.assertTrue(is_valid, "Signature for " + string + " should be valid")
-
-        for string in TestSignature.invalid_commands:
-            is_valid = self.signature.is_valid(string)
-
-            self.assertFalse(is_valid, "Signature for " + string + " should not be valid")
-        pass
-
-    def test_get_matches_in_string(self):
-        for string in TestSignature.strings_containing_commands:
-            matches = self.signature.get_matches_in_string(string)
-
-            self.assertEqual(TestSignature.strings_containing_commands[string], matches)
+        self.assertEqual(match, expected_match)
+        self.assertEqual(is_valid, expected_is_valid)
 
 
 if __name__ == '__main__':

@@ -6,9 +6,7 @@ from ninjadroid.use_cases.launch_dex2jar import LaunchDex2Jar
 
 class TestLaunchDex2Jar(unittest.TestCase):
     """
-    UnitTest for launch_dex2jar.py.
-
-    RUN: python3 -m unittest -v tests.test_launch_dex2jar
+    Test LaunchDex2Jar use case.
     """
 
     ANY_PATH = "any-path"

@@ -3,10 +3,17 @@ NinjaDroid
 
 NinjaDroid is a simple tool to reverse engineering Android APK packages.
 
+Published at: [https://snapcraft.io/ninjadroid](https://snapcraft.io/ninjadroid)
+```shell
+$ snap install ninjadroid --channel=beta
+```
+
 [![Build Status: TravisCI](https://travis-ci.org/rovellipaolo/NinjaDroid.svg?branch=master)](https://travis-ci.org/rovellipaolo/NinjaDroid)
 [![Test Coverage: Coveralls](https://coveralls.io/repos/github/rovellipaolo/NinjaDroid/badge.svg?branch=master)](https://coveralls.io/github/rovellipaolo/NinjaDroid?branch=master)
 [![Language Grade: LGTM.com](https://img.shields.io/lgtm/grade/python/g/rovellipaolo/NinjaDroid.svg?logo=lgtm&logoWidth=18)](https://lgtm.com/projects/g/rovellipaolo/NinjaDroid/context:python)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+
+[![Get it from the Snap Store](https://snapcraft.io/static/images/badges/en/snap-store-black.svg)](https://snapcraft.io/ninjadroid)
 
 ![NinjaDroid](docs/images/ninjadroid.gif "Screencast of NinjaDroid")
 
@@ -37,14 +44,14 @@ Furthermore, NinjaDroid uses [apktool](https://github.com/iBotPeaches/Apktool) a
 
 The first step is cloning the NinjaDroid repository, or downloading its source code.
 
-```
+```shell
 $ git clone https://github.com/rovellipaolo/NinjaDroid
 $ cd NinjaDroid
 ```
 
-NinjaDroid has several ways to be executed: in local environment, in [Docker](https://www.docker.com/) or as a [Flatpak](https://flatpak.org/).
+NinjaDroid has several ways to be executed: natively in your local environment, in [Docker](https://www.docker.com/), as a [Flatpak](https://flatpak.org/) (experimental) and as a [Snap](https://snapcraft.io/) (experimental).
 
-### Local
+### Native
 To execute NinjaDroid in your local machine, you need to install `Python 3.5` or higher, `Java 8` or higher and `binutils`.
 
 Optionally, if you have the Android SDK installed locally, you can use the SDK version of `aapt` instead of the included one. In order to do so, you need to change the `aapt` location in `ninjadroid/aapt/Aapt.py` (i.e. `__AAPT_EXEC_PATH = "ninjadroid/aapt/aapt"`).
@@ -52,7 +59,7 @@ Optionally, if you have the Android SDK installed locally, you can use the SDK v
 #### Linux
 Just launch the following commands, which will install all the Python dependencies (making sure that `aapt`, `apktool` and `dex2jar` have executable permissions) and add a `ninjadroid` symlink to `/usr/local/bin/`.
 
-```
+```shell
 $ make build-linux
 $ make install
 $ ninjadroid --help
@@ -61,7 +68,7 @@ $ ninjadroid --help
 #### MacOS
 Just launch the following commands, which will install all the needed Python dependencies (making sure that `aapt`, `apktool` and `dex2jar` have executable permissions) and add a `ninjadroid` symlink to `/usr/local/bin/`.
 
-```
+```shell
 $ make build-macos
 $ make install
 $ ninjadroid --help
@@ -71,31 +78,47 @@ $ ninjadroid --help
 To execute NinjaDroid in Docker, you need `Docker` installed.
 
 To build the Docker image, launch the following commands:
-```
+```shell
 $ make build-docker
 $ docker run --name ninjadroid ninjadroid:latest ninjadroid --help
 ```
 
 Note that you need to bind the directory containing the target APK package to the Docker image:
-```
+```shell
 $ mkdir apks
 $ cp /path/to/your/package.apk apks/package.apk
 $ docker run --name ninjadroid -it --rm -v $(pwd)/apks:/apks ninjadroid:latest ninjadroid /apks/package.apk -aj
 ```
-And the same applies also to the output directory when using the _"-e"_ or _"--extract"_ option:
-```
+And the same applies also to the output directory when using the `-e`/`--extract` option, to which you also need to grant permissions:
+```shell
 $ mkdir output
+$ chmod 777
 $ docker run --name ninjadroid --rm -v $(pwd)/apks:/apks -v $(pwd)/output:/output ninjadroid:latest ninjadroid /apks/package.apk -ae /output
 ```
 
 ### Flatpak
-To execute NinjaDroid as a Flatpak, you need `Flatpak` installed.
+To execute NinjaDroid as a Flatpak, you need `Flatpak` and `flatpak-builder` installed.
 
 Just launch the following commands, which will install all the needed Flatpak dependencies:
-```
+```shell
 $ make build-flatpak
-$ flatpak-builder --run flatpak/build flatpak/net.paolorovelli.NinjaDroid.yaml ninjadroid --help
+$ flatpak-builder --run flatpak/build flatpak/com.github.rovellipaolo.NinjaDroid.yaml ninjadroid --help
 ```
+
+**NOTE:** Flatpak support is still experimental and the `-e`/`--extract` option does not work correctly at present.
+
+
+### Snap
+To execute NinjaDroid as a Snap, you need `Snap` and `snapcraft` installed.
+
+Just launch the following commands, which will install all the needed Snap dependencies:
+```shell
+$ make build-snap
+$ make install-snap
+$ ninjadroid --help
+```
+
+**NOTE:** Snap support is still experimental and the `-e`/`--extract` option is currently supported only in _devmode_, that is by installing the snap using the `--devmode` option.
 
 
 
@@ -103,21 +126,21 @@ $ flatpak-builder --run flatpak/build flatpak/net.paolorovelli.NinjaDroid.yaml n
 
 Once you've configured it (see the _"Installation"_ section), you can also run NinjaDroid checkstyle as follows.
 
-### Local
+### Native
 To run the checkstyle in your local machine, launch the following command:
-```
+```shell
 $ make checkstyle
 ```
 **NOTE:** This is using [`pylint`](https://github.com/PyCQA/pylint) under-the-hood.
 
 You can also run the checkstyle automatically at every git commit by launching the following command:
-```
+```shell
 $ make install-githooks
 ```
 
 ### Docker
 To run the checkstyle in Docker, launch the following command:
-```
+```shell
 $ make checkstyle-docker
 ```
 
@@ -127,21 +150,35 @@ $ make checkstyle-docker
 
 Once you've configured it (see the _"Installation"_ section), you can also run NinjaDroid tests as follows.
 
-### Local
-To run the tests in your local machine, launch the following command:
-```
+### Native
+To run unit and regression tests in your local machine, launch the following commands:
+```shell
 $ make test
+$ make regression
 ```
 
 You can also run the tests with coverage by launching the following command:
-```
+```shell
 $ make test-coverage
 ```
 
 ### Docker
-To run the tests in Docker, launch the following command:
-```
+To run unit and regression tests in Docker, launch the following commands:
+```shell
 $ make test-docker
+$ make regression-docker
+```
+
+### Flatpak
+To run regression tests in Flatpak, launch the following command:
+```shell
+$ make regression-flatpak
+```
+
+### Snap
+To run regression tests in Snap, launch the following command:
+```shell
+$ make regression-snap
 ```
 
 
@@ -151,11 +188,11 @@ $ make test-docker
 The following are examples of running NinjaDroid against the sample APK package.
 
 ### Show APK summary
+```shell
+$ ninjadroid regression/data/Example.apk
 ```
-$ ninjadroid tests/data/Example.apk
-```
-```
-file:    tests/data/Example.apk
+```shell
+file:    regression/data/Example.apk
 size:    70058
 md5:     c9504f487c8b51412ba4980bfe3cc15d
 sha1:    482a28812495b996a92191fbb3be1376193ca59b
@@ -180,6 +217,15 @@ manifest:
 	version:
 		code:  1
 		name:  1.0
+	sdk:
+		min:   10
+		target: 20
+		max:   20
+	permissions:
+		- android.permission.INTERNET
+		- android.permission.READ_EXTERNAL_STORAGE
+		- android.permission.RECEIVE_BOOT_COMPLETED
+		- android.permission.WRITE_EXTERNAL_STORAGE
 dex:
 	file:   classes.dex
 	size:   2132
@@ -190,15 +236,15 @@ dex:
 ```
 
 ### Show APK extended information in JSON format
-```
-$ ninjadroid tests/data/Example.apk --all --json
+```shell
+$ ninjadroid regression/data/Example.apk --all --json
 ```
 ```json
 {
     "cert": {
         "file": "META-INF/CERT.RSA",
         "fingerprint": {
-            "md5": "90:22:EF:0C:DB:C3:78:87:7B:C3:A3:6C:5A:68:E6:45",
+            "md5": "",
             "sha1": "5A:C0:6C:32:63:7F:5D:BE:CA:F9:38:38:4C:FA:FF:ED:20:52:43:B6",
             "sha256": "E5:15:CC:BC:5E:BF:B2:9D:A6:13:03:63:CF:19:33:FA:CE:AF:DC:ED:5D:2F:F5:98:7C:CE:37:13:64:4A:CF:77",
             "signature": "SHA1withRSA",
@@ -209,7 +255,6 @@ $ ninjadroid tests/data/Example.apk --all --json
             "country": "XX",
             "domain": "",
             "email": "",
-            "label": "",
             "name": "Name",
             "organization": "Organization",
             "state": "State",
@@ -221,7 +266,6 @@ $ ninjadroid tests/data/Example.apk --all --json
             "country": "XX",
             "domain": "",
             "email": "",
-            "label": "",
             "name": "Name",
             "organization": "Organization",
             "state": "State",
@@ -274,11 +318,10 @@ $ ninjadroid tests/data/Example.apk --all --json
             "urls": []
         }
     ],
-    "file": "tests/data/Example.apk",
+    "file": "regression/data/Example.apk",
     "manifest": {
         "activities": [
             {
-                "configChanges": "0x00000480",
                 "intent-filter": [
                     {
                         "action": [
@@ -289,7 +332,6 @@ $ ninjadroid tests/data/Example.apk --all --json
                         ]
                     }
                 ],
-                "label": "@7F040000",
                 "launchMode": "1",
                 "name": "com.example.app.HomeActivity"
             },
@@ -315,7 +357,6 @@ $ ninjadroid tests/data/Example.apk --all --json
                         ]
                     }
                 ],
-                "label": "@7F040001",
                 "launchMode": "1",
                 "meta-data": [
                     {
@@ -342,7 +383,7 @@ $ ninjadroid tests/data/Example.apk --all --json
                 "name": "com.example.app.ExampleBrodcastReceiver"
             },
             {
-                "exported": "false",
+                "exported": false,
                 "intent-filter": [
                     {
                         "action": [
@@ -355,8 +396,8 @@ $ ninjadroid tests/data/Example.apk --all --json
                 "name": "com.example.app.ExampleBrodcastReceiver2"
             },
             {
-                "enabled": "true",
-                "exported": "false",
+                "enabled": true,
+                "exported": false,
                 "intent-filter": [
                     {
                         "action": [
@@ -375,8 +416,8 @@ $ ninjadroid tests/data/Example.apk --all --json
                 "name": "com.example.app.ExampleBrodcastReceiver3"
             },
             {
-                "enabled": "false",
-                "exported": "true",
+                "enabled": false,
+                "exported": true,
                 "name": "com.example.app.ExampleBrodcastReceiver4"
             }
         ],
@@ -390,15 +431,15 @@ $ ninjadroid tests/data/Example.apk --all --json
                 "name": "com.example.app.ExampleService"
             },
             {
-                "enabled": "false",
-                "exported": "true",
-                "isolatedProcess": "true",
+                "enabled": false,
+                "exported": true,
+                "isolatedProcess": true,
                 "name": "com.example.app.ExampleService2"
             },
             {
-                "enabled": "true",
-                "exported": "false",
-                "isolatedProcess": "false",
+                "enabled": true,
+                "exported": false,
+                "isolatedProcess": false,
                 "name": "com.example.app.ExampleService3"
             }
         ],
@@ -519,24 +560,24 @@ $ ninjadroid tests/data/Example.apk --all --json
 ```
 
 ### Extract and store APK entries and information
+```shell
+$ ninjadroid regression/data/Example.apk --all --extract output/
 ```
-$ ninjadroid tests/data/Example.apk --all --extract analysis/Example/ 
-```
-```
+```shell
   >> NinjaDroid: [INFO] Executing apktool...
-  >> NinjaDroid: [INFO] Creating analysis/Example/smali/...
-  >> NinjaDroid: [INFO] Creating analysis/Example/AndroidManifest.xml...
-  >> NinjaDroid: [INFO] Creating analysis/Example/res/...
-  >> NinjaDroid: [INFO] Creating analysis/Example/assets/...
+  >> NinjaDroid: [INFO] Creating output/smali/...
+  >> NinjaDroid: [INFO] Creating output/AndroidManifest.xml...
+  >> NinjaDroid: [INFO] Creating output/res/...
+  >> NinjaDroid: [INFO] Creating output/assets/...
   >> NinjaDroid: [INFO] Executing dex2jar...
-  >> NinjaDroid: [INFO] Creating analysis/Example/Example.jar...
-dex2jar tests/data/Example.apk -> analysis/Example/Example.jar
+  >> NinjaDroid: [INFO] Creating output/Example.jar...
+dex2jar regression/data/Example.apk -> output/Example.jar
   >> NinjaDroid: [INFO] Extracting certificate file...
-  >> NinjaDroid: [INFO] Creating analysis/Example/META-INF/CERT.RSA...
+  >> NinjaDroid: [INFO] Creating output/META-INF/CERT.RSA...
   >> NinjaDroid: [INFO] Extracting DEX files...
-  >> NinjaDroid: [INFO] Creating analysis/Example/classes.dex...
+  >> NinjaDroid: [INFO] Creating output/classes.dex...
   >> NinjaDroid: [INFO] Generating JSON report file...
-  >> NinjaDroid: [INFO] Creating analysis/Example/report-Example.json...
+  >> NinjaDroid: [INFO] Creating output/report-Example.json...
 ```
 **NOTE:** without specifying an output directory, one with the APK package name will be created inside the current working directory.
 

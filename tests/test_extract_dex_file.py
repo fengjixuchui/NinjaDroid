@@ -4,11 +4,10 @@ from unittest.mock import Mock, mock_open, patch
 from ninjadroid.use_cases.extract_dex_file import ExtractDexFile
 
 
+# pylint: disable=too-many-arguments
 class TestExtractDexFile(unittest.TestCase):
     """
-    UnitTest for extract_dex_file.py.
-
-    RUN: python -m unittest -v tests.test_extract_dex_file
+    Test ExtractDexFile use case.
     """
 
     ANY_APK_FILE = "any-apk-file"
